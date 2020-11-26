@@ -5,9 +5,9 @@ import copy
 
 # parameters for input
 DEFAULT_VELOCITY_BINS = np.linspace(0, 128, 32+1, dtype=np.int)
-DEFAULT_FRACTION = 16
-DEFAULT_DURATION_BINS = np.arange(60, 3841, 60, dtype=int)
-DEFAULT_TEMPO_INTERVALS = [range(30, 90), range(90, 150), range(150, 210)]
+DEFAULT_FRACTION = 16 
+DEFAULT_DURATION_BINS = np.arange(60, 3841, 60, dtype=int) # 8 beats, resolution 1/8, since tick is 480 per beat
+DEFAULT_TEMPO_INTERVALS = [range(30, 90), range(90, 150), range(150, 210)] # slow, medium, fast
 
 # parameters for output
 DEFAULT_RESOLUTION = 480
@@ -79,9 +79,9 @@ def quantize_items(items, ticks=120):
     grids = np.arange(0, items[-1].start, ticks, dtype=int)
     # process
     for item in items:
-        index = np.argmin(abs(grids - item.start))
+        index = np.argmin(abs(grids - item.start)) # get index(bar number)
         shift = grids[index] - item.start
-        item.start += shift
+        item.start += shift # by this, the onset of each note is fit to the grid
         item.end += shift
     return items      
 
@@ -104,7 +104,7 @@ def group_items(items, max_time, ticks_per_bar=DEFAULT_RESOLUTION*4):
     items.sort(key=lambda x: x.start)
     downbeats = np.arange(0, max_time+ticks_per_bar, ticks_per_bar)
     groups = []
-    for db1, db2 in zip(downbeats[:-1], downbeats[1:]):
+    for db1, db2 in zip(downbeats[:-1], downbeats[1:]): # make a subset(googan)
         insiders = []
         for item in items:
             if (item.start >= db1) and (item.start < db2):
@@ -129,10 +129,10 @@ class Event(object):
 def item2event(groups):
     events = []
     n_downbeat = 0
-    for i in range(len(groups)):
-        if 'Note' not in [item.name for item in groups[i][1:-1]]:
+    for i in range(len(groups)): # for each bar,
+        if 'Note' not in [item.name for item in groups[i][1:-1]]: # If no note event, skip
             continue
-        bar_st, bar_et = groups[i][0], groups[i][-1]
+        bar_st, bar_et = groups[i][0], groups[i][-1] #start and ending time of bar
         n_downbeat += 1
         events.append(Event(
             name='Bar',
