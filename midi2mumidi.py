@@ -1,7 +1,7 @@
 import os
 import pickle
 from glob import glob
-
+from tqdm import tqdm
 import chord_recognition
 import numpy as np
 import miditoolkit
@@ -15,25 +15,61 @@ DEFAULT_DURATION_BINS = np.arange(689, 88200, 689, dtype=int)
 DEFAULT_TEMPO_INTERVALS = [range(30, 90), range(90, 150), range(150, 210)]
 
 # parameters for output
-DEFAULT_RESOLUTION = 2756 # 1/8
+#DEFAULT_RESOLUTION = 2756 # 1/8
 QUANTIZE_RESOLUTION = 689 # 1/32
 TICKS_PER_BEAT = 22050
 
 mid_base = '../nesmdb_midi/'
 nlm_base = '../nesmdb_nlm/'
-#splits = ['train', 'valid', 'test']
-splits = ['valid']
+out_base = '../nesmdb_word/'
+splits = ['train', 'valid', 'test']
+#splits = ['valid']
 instrs = ['p1','p2','tr','no']
 instr_dict = {'p1':1, 'p2':2, 'tr':3, 'no':4}
 velocity = 60
 
 def saveMuMIDI():
     for split in splits:
-        mid_dir = mid_base + split
-        for file in glob(mid_dir+'/*.mid'):
-            # for all file, do and save output as pkl
-            print(file)
+        mid_dir = os.path.join(mid_base,split)
+        out_dir = os.path.join(out_base,split)
+        os.makedirs(out_dir, exist_ok=True)
+        for file in tqdm(glob(os.path.join(mid_dir,'*.mid'))):
+            filename = file.split('/')[-1]
+            outfile = os.path.join(out_dir, filename.replace('.mid','.txt'))
+            # Skip if the file already exists
+            if os.path.isfile(outfile):
+                continue
+            
+            note_items = read_items(file)
+            if len(note_items) == 0:
+                continue
+            note_items = quantize_items(note_items)
 
+            items = note_items
+            max_time = note_items[-1].end
+            groups = group_items(items, max_time)
+
+            # for g in groups:
+            #     print(*g, sep='\n')
+            #     print()
+
+            events = item2event(groups)
+            #print(*events[:100], sep='\n')
+            #print(f'input file name : {file} ')
+            #print(f'mumidi token number {len(events)}')
+
+            #output_path = outdir + filename
+            #midi2mumidi.write_midi(events, output_path)
+            # with open(txtlist[i], "r") as f:
+            #     lines = f.readlines()
+            #     print(f'txt file name : {txtlist[i]} ')
+            #     print(len(lines))
+            save_file = True
+            if save_file:
+                w_events = event2word(events)
+                #print(f'output file name : {outfile} ')
+                with open(outfile, "w") as f:
+                    f.write(w_events)
 
 # define "Item" for general storage
 class Item(object):
@@ -208,7 +244,38 @@ def item2event(groups):
     return events
 
 def event2word(events):
-    print(event)
+    # get downbeat and note (no time)
+    words = []
+    i = 0
+    position = None
+    track = None
+    for i in range(len(events)):
+        if events[i].name == 'Bar':
+            words.append('BAR')
+        elif events[i].name == 'Position':
+            # start time and end time from position
+            position = int(events[i].value.split('/')[0])
+            words.append(f'POS_{position}')
+        elif events[i].name == 'Track':
+            # instr name
+            track = events[i].text
+            if track == "p1":
+                words.append('P1')
+            elif track == "p2":
+                words.append('P2')
+            elif track == "tr":
+                words.append('TR')
+            else:
+                words.append('NO')
+        elif events[i].name == 'Note On':
+            pitch = int(events[i].value)
+            words.append(f'NOTEON_{pitch}')
+        elif events[i].name == 'Note Duration':
+            index = int(events[i].value)
+            words.append(f'DUR_{index+1}')
+    words = '\n'.join(words)
+
+    return words
 
 #############################################################################################
 # WRITE MIDI
@@ -222,7 +289,7 @@ def word_to_event(words, word2event):
 
 #def write_midi(words, word2event, output_path, prompt_path=None):
 #    events = word_to_event(words, word2event)
-def write_midi(events, output_path, prompt_path=None):
+def write_midi(events, output_path):
     # get downbeat and note (no time)
     temp_notes = []
     i = 0
@@ -328,58 +395,33 @@ def write_midi(events, output_path, prompt_path=None):
     #         st = flags[position]
     #         tempos.append([int(st), value])
     # write
-    if prompt_path:
-        midi = miditoolkit.midi.parser.MidiFile(prompt_path)
-        #
-        last_time = DEFAULT_RESOLUTION * 4 * 4
-        # note shift
-        for note in notes:
-            note.start += last_time
-            note.end += last_time
-        midi.instruments[0].notes.extend(notes)
-        # # tempo changes
-        # temp_tempos = []
-        # for tempo in midi.tempo_changes:
-        #     if tempo.time < DEFAULT_RESOLUTION*4*4:
-        #         temp_tempos.append(tempo)
-        #     else:
-        #         break
-        # for st, bpm in tempos:
-        #     st += last_time
-        #     temp_tempos.append(miditoolkit.midi.containers.TempoChange(bpm, st))
-        # midi.tempo_changes = temp_tempos
-        # # write chord into marker
-        # if len(temp_chords) > 0:
-        #     for c in chords:
-        #         midi.markers.append(
-        #             miditoolkit.midi.containers.Marker(text=c[1], time=c[0]+last_time))
-    else:
-        midi = miditoolkit.midi.parser.MidiFile()
-        midi.ticks_per_beat = TICKS_PER_BEAT
-        # write instrument
-        p1_Instrument = miditoolkit.midi.containers.Instrument(81, is_drum=False, name='p1') # program number for Lead 1 (square)
-        p2_Instrument = miditoolkit.midi.containers.Instrument(82, is_drum=False, name='p2') # program number for Lead 2 (sawtooth)
-        tr_Instrument = miditoolkit.midi.containers.Instrument(39, is_drum=False, name='tr') # program number for Synth Bass 1
-        no_Instrument = miditoolkit.midi.containers.Instrument(122, is_drum=True, name='no') # program number for Breath Noise
-        p1_Instrument.notes = p1
-        p2_Instrument.notes = p2
-        tr_Instrument.notes = tr
-        no_Instrument.notes = no
-        midi.instruments.append(p1_Instrument)
-        midi.instruments.append(p2_Instrument)
-        midi.instruments.append(tr_Instrument)
-        midi.instruments.append(no_Instrument)
+    
+    midi = miditoolkit.midi.parser.MidiFile()
+    midi.ticks_per_beat = TICKS_PER_BEAT
+    # write instrument
+    p1_Instrument = miditoolkit.midi.containers.Instrument(81, is_drum=False, name='p1') # program number for Lead 1 (square)
+    p2_Instrument = miditoolkit.midi.containers.Instrument(82, is_drum=False, name='p2') # program number for Lead 2 (sawtooth)
+    tr_Instrument = miditoolkit.midi.containers.Instrument(39, is_drum=False, name='tr') # program number for Synth Bass 1
+    no_Instrument = miditoolkit.midi.containers.Instrument(122, is_drum=True, name='no') # program number for Breath Noise
+    p1_Instrument.notes = p1
+    p2_Instrument.notes = p2
+    tr_Instrument.notes = tr
+    no_Instrument.notes = no
+    midi.instruments.append(p1_Instrument)
+    midi.instruments.append(p2_Instrument)
+    midi.instruments.append(tr_Instrument)
+    midi.instruments.append(no_Instrument)
 
-        # # write tempo
-        # tempo_changes = []
-        # for st, bpm in tempos:
-        #     tempo_changes.append(miditoolkit.midi.containers.TempoChange(bpm, st))
-        # midi.tempo_changes = tempo_changes
-        # # write chord into marker
-        # if len(temp_chords) > 0:
-        #     for c in chords:
-        #         midi.markers.append(
-        #             miditoolkit.midi.containers.Marker(text=c[1], time=c[0]))
+    # # write tempo
+    # tempo_changes = []
+    # for st, bpm in tempos:
+    #     tempo_changes.append(miditoolkit.midi.containers.TempoChange(bpm, st))
+    # midi.tempo_changes = tempo_changes
+    # # write chord into marker
+    # if len(temp_chords) > 0:
+    #     for c in chords:
+    #         midi.markers.append(
+    #             miditoolkit.midi.containers.Marker(text=c[1], time=c[0]))
     # write
     midi.dump(output_path)
 

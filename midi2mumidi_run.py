@@ -7,6 +7,7 @@ import os
 midilist = sorted(glob('../nesmdb_midi/valid/*.mid'))
 txtlist = sorted(glob("../nesmdb_tx1/valid/*.txt"))
 outdir = "./midi_out/"
+split = ['train', 'valid', 'test']
 # midi_obj = []
 # for i in range(len(filelist)):
 #     midi_obj.append(miditoolkit.midi.parser.MidiFile(filelist[i]))
@@ -33,11 +34,17 @@ for i in range(0, len(midilist)):
     print(f'midi file name : {midilist[i]} ')
     print(f'mumidi token number {len(events)}')
 
-    filename = midilist[i].split('/')[-1].replace(".txt",".mid")
-    output_path = outdir + filename
-    midi2mumidi.write_midi(events, output_path)
+    filename = midilist[i].split('/')[-1]
+    #output_path = outdir + filename
+    #midi2mumidi.write_midi(events, output_path)
     # with open(txtlist[i], "r") as f:
     #     lines = f.readlines()
     #     print(f'txt file name : {txtlist[i]} ')
     #     print(len(lines))
+    save_file = True
+    if save_file:
+        w_events = midi2mumidi.event2word(events)
+        outfile = outdir + filename.replace('.mid','.txt')
+        with open(outfile, "w") as f:
+            f.write(w_events)
 
