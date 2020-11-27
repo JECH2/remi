@@ -280,11 +280,40 @@ def event2word(events):
 #############################################################################################
 # WRITE MIDI
 #############################################################################################
-def word_to_event(words, word2event):
+def word_to_event(words):
     events = []
+    words = words.split('\n')
     for word in words:
-        event_name, event_value = word2event.get(word).split('_')
-        events.append(Event(event_name, None, event_value, None))
+        wsplit = word.split('_')
+        event_name = None
+        value = None
+        if wsplit[0] not in ['P1', 'P2', 'TR', 'NO']:
+            if wsplit[0] == 'BAR':
+                event_name = 'Bar'
+            elif wsplit[0] == 'POS':
+                event_name = 'Position'
+                value = int(wsplit[1].split('/')[0])
+            elif wsplit[0] == 'NOTEON':
+                event_name = 'Note On'
+                value = int(wsplit[1])
+            elif wsplit[0] == 'DUR':
+                event_name = 'Note Duration'
+                value = int(wsplit[1]) - 1
+            else:
+                print(wsplit[0])
+                print('not matching word')
+                exit()
+            events.append(Event(event_name, None, value, None))
+        else: # [p1, p2, tr, no]
+            event_name = 'Track'
+            if wsplit[0] == 'P1':
+                events.append(Event(event_name, None, None, 'p1'))
+            elif wsplit[0] == 'P2':
+                events.append(Event(event_name, None, None, 'p2'))
+            elif wsplit[0] == 'TR':
+                events.append(Event(event_name, None, None, 'tr'))
+            else:
+                events.append(Event(event_name, None, None, 'no'))
     return events
 
 #def write_midi(words, word2event, output_path, prompt_path=None):
@@ -424,6 +453,8 @@ def write_midi(events, output_path):
     #             miditoolkit.midi.containers.Marker(text=c[1], time=c[0]))
     # write
     midi.dump(output_path)
+
+    return midi
 
 
 

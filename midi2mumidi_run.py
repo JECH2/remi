@@ -44,7 +44,11 @@ for i in range(0, len(midilist)):
     save_file = True
     if save_file:
         w_events = midi2mumidi.event2word(events)
+        reconstructed_events = midi2mumidi.word_to_event(w_events)
         outfile = outdir + filename.replace('.mid','.txt')
+        outfile2 = outdir + filename.replace('mid', '2.txt')
         with open(outfile, "w") as f:
             f.write(w_events)
-
+        with open(outfile2, "w") as f:
+            for reconstructed_event in reconstructed_events:
+                f.write(str(reconstructed_event)+'\n')
